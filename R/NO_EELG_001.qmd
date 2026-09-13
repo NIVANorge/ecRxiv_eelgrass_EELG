@@ -361,7 +361,7 @@ The term 'characteristic' is used in a similar way  to the term 'criteria' in Mu
 
 ### 3.5 Spatial aggregation
 
-<!-- Describe in word the same aggregation pathway presented in the top yaml (the metadata). If you have scaled against the reference value, it is especially important to know if you did any avergaing or summations etc. beforehand. An example text for a rather simple case could be: "The variable is scaled at the initial polygon level and the point estimate is a area-weighted arithmetic mean of all polygins. There is no transformation, and truncation is not needed as the indicator becomes naturally bound between 0 and 1".  -->
+<!-- Describe in word the same aggregation pathway presented in the top yaml (the metadata). If you have scaled against the reference value, it is especially important to know if you did any avergaing or summations etc. beforehand. An example text for a rather simple case could be: "The variable is scaled at the initial polygon level and the point estimate is a area-weighted arithmetic mean of all polygins. There is no transformation, and truncation is not needed as the indicator becomes naturally bound between 0 and 1".  -->  
 
 ## 4. Reference condition and levels
 
@@ -412,7 +412,7 @@ The **depth limit score (D)** depends on eco-region and water type:
 | Nordsjøen nord | 3 | > 7 m | > 6–7 m | > 4–6 m | > 3–4 m | > 1–3 m | 0–1 m |
 | Norskehavet sør* | 3 | > 7 m | > 6–7 m | > 4–6 m | > 3–4 m | > 1–3 m | 0–1 m |
 
-The **density score (T)** is ecual to the density level measured on a scale from 1-4. 
+The **density score (T)** is equal to the density, measured on a scale from 1-4. 
 
 The **overgrowth score (B)** is given as follows::
 
@@ -433,7 +433,7 @@ The **overgrowth score (B)** is given as follows::
 <!--# 
 
 Describe the spatial resolution of the reference levels. E.g. is it defined as a fixed value for all areas, or does it vary. Also, at what spatial scale are the reference levels valid? For example, if the reference levels have a regional resolution (varies between regions), it might mean that it is only valid and correct to use for normalising local variable values that are first aggregated to regional scale. However, sometimes the reference levels are insensitive to this and can be used to scale variables at the local (e.g. plot) scale. 
- -->
+ -->  
 
 ## 5. Uncertainties
 ### 5.1 General uncertainties
@@ -453,6 +453,11 @@ However, the variation in the mean is defined by the spatial variation only, and
 
 <!--# All the data import and preparation should be done in this chapter, before the analysis chapter. As a minimum, add code for importing data, and describe or show the data structure. You may also explain certain variables, what they represent, and their distributions -->
 
+
+### 7.1 Data from Vannmiljø  
+
+<!--# Import and prepare the first dataset for analysis. Change the header from Dataset A to the name of the actual dataset. -->
+
 ```{r}
 
 # read data in Vannmiljø format  
@@ -462,6 +467,13 @@ eelgrass_raw <-
     col_types = vm_file_specifications) %>%
   mutate(
     year = lubridate::year(Tid_provetak))
+
+```
+
+
+### 7.2. Station metadata (ecoregion and water type)
+
+```{r}
 
 # . # . # . # . # . # . # . # . # . # . # . # . # . # . # . # . # . 
 # Station metadata ----
@@ -482,25 +494,22 @@ station_lookup <-
     "Skjæret",           "ZR12", "Norskehavet nord", 3
   )
 
+
 eelgrass_raw |>
-  count(Vannlokalitetsnavn) |> 
+  distinct(Vannlokalitetsnavn, year) |> 
+  count(Vannlokalitetsnavn, name = "Number of years") |> 
   left_join(station_lookup, by = join_by(Vannlokalitetsnavn)) |> 
   filter(!is.na(okoregion))
 
 ```
 
 
-### 7.1 Dataset A
-
-<!--# Import and prepare the first dataset for analysis. Change the header from Dataset A to the name of the actual dataset. -->
-
-### 7.2. Dataset B
-
-<!--# Repeat the process for each dataset -->
-
 ## 8. Spatial units
 
 <!--# Describe the spatial units that you rely on in your analyses. Highlight the spatial units (the resolution) that the indicator values should be interpreted at. Potential spatial delineation data (maksing layers etc.) should be introduced under chapert 7. We recommend using the SEEA EA terminology of Basic Spatial Units (BSU), Ecosystem Asses (EA) and Ecosystem Accounting Area (EAA). -->
+
+
+
 
 ## 9. Analyses
 
@@ -514,6 +523,165 @@ Caching is also activated (from the top YAML), meaning that rendering to html wi
 
 -->
 
+```{r convert_to_wide}
+
+# - convert 'long format' to 'wide' (one observation per station/year)
+
+eelgrass_wide_1 <-
+  eelgrass_raw %>%
+  filter(
+    Parameter_navn %in% c(
+      "Absolutt nedre voksegrense angiospermer (takson)",
+      "Nedre voksegrense ålegresseng (takson)",
+      "Dekningsgrad ålegresseng (skala)",
+      "Dekningsgrad marine begroingsalger (skala)"
+    )
+  ) %>%
+  select(
+    Vannlokalitetsnavn,
+    Tid_provetak,
+    year,
+    Parameter_navn,
+    Verdi
+  ) %>%
+  pivot_wider(
+    names_from = Parameter_navn,
+    values_from = Verdi
+  )
+
+```
+
+```{r rename}
+
+# Rename variables
+
+eelgrass_wide_1 <- eelgrass_wide_1 |>
+  rename(
+    depth_limit_abs =
+      `Absolutt nedre voksegrense angiospermer (takson)`,
+
+    depth_limit =
+      `Nedre voksegrense ålegresseng (takson)`,
+
+    density =
+      `Dekningsgrad ålegresseng (skala)`,
+
+    epiphytes =
+      `Dekningsgrad marine begroingsalger (skala)`
+  )
+
+# eelgrass_wide_1 |> head(3)
+
+
+```
+
+```{r add_station_metadata}
+
+# add station metadata
+
+eelgrass_wide_2 <- eelgrass_wide_1 |>
+  left_join(
+    station_lookup,
+    by = "Vannlokalitetsnavn"
+  ) %>%
+  # remove stations without metadata
+  # (these stations are not assessed in the Økokyst reports)
+  filter(
+    !is.na(okoregion)
+  )
+
+# eelgrass_wide_2 |> head(3)
+
+```
+
+The calculation of nEQR is based on `Nedre voksegrense ålegresseng (takson)`, `Dekningsgrad ålegresseng (skala)`, and `Dekningsgrad marine begroingsalger (skala)`, as given in 
+```{r calculate_nEQR}
+
+# calculate nEQR for each station / year  
+# 
+eelgrass_eqr <- eelgrass_wide_2 %>%
+  mutate(
+
+    depth_score =
+      get_depth_score(
+        depth_limit,
+        okoregion,
+        vanntype
+      ),
+
+    density_score =
+      get_density_score(density),
+
+    epiphyte_score =
+      get_epiphyte_score(epiphytes),
+
+    nEQR =
+      0.5 * (depth_score / 5) +
+      0.3 * (density_score / 4) +
+      0.2 * (epiphyte_score / 4),
+    
+    # for ordering in tables
+    okoregion = factor(okoregion,
+                       levels = c("Norskehavet sør", "Nordsjøen nord", "Nordsjøen sør"))
+    
+  )
+
+# head(eelgrass_eqr, 2)
+
+```
+
+As an example, we show the measured values (depth_limit, density, epiphytes), the scores (depth_score, density_score, epiphyte_score), and the nEQR for three stations.  
+```{r results_by_station_2025}
+
+# results_by_station, 2025
+
+eqr_table1 <- eelgrass_eqr |>
+  filter(!is.na(nEQR) & year == 2025) |>
+  select(Vannlokalitetsnavn, okoregion,
+         depth_limit, density, epiphytes,
+         depth_score, density_score, epiphyte_score, nEQR) |>
+  arrange(okoregion)
+
+head(eqr_table1, 3) |> 
+  kable()
+
+```
+
+```{r results_by_station_allyears }
+# 
+# results by station, all years
+
+eqr_table2 <- eelgrass_eqr |>
+  select(Vannlokalitetsnavn, okoregion, year, nEQR) |>
+  filter(!is.na(nEQR)) |> 
+  pivot_wider(names_from = year, values_from = nEQR) |>
+  arrange(okoregion, Vannlokalitetsnavn) 
+
+# eqr_table2
+
+```
+
+Below, we show the mean score for each of the three criteria for each ecoregion as well as the mean of the resulting nEQR.
+```{r results_by_ecoregion_2025}
+
+# results_by_station, 2025
+
+eqr_region <- eelgrass_eqr |>
+  filter(!is.na(nEQR) & year == 2025) |>
+  group_by(okoregion) |> 
+  summarise(
+    depth_score = mean(depth_score, na.rm = TRUE), 
+    density_score = mean(density_score, na.rm = TRUE), 
+    epiphyte_score = mean(epiphyte_score, na.rm = TRUE),
+    nEQR = mean(nEQR, na.rm = TRUE)
+  ) |>
+  arrange(okoregion) 
+
+eqr_region |> 
+  kable()
+
+```
+
 ## 10. Results
 
 <!--# 
@@ -524,6 +692,17 @@ This is typically where people will harvest data from, so make sure to include a
 
 -->
 
+The results by ecoregion for 2025 are shown below.
+
+```{r}
+
+eqr_region |> 
+  select(okoregion, nEQR) |> 
+  kable()  
+
+```
+
+
 ## 11. Export file
 
 <!--# 
@@ -531,6 +710,8 @@ This is typically where people will harvest data from, so make sure to include a
 Optional: Display the code (don't execute it) or the workflow for exporting the indicator values to file. Ideally the indicator values are exported as a georeferenced shape or raster file with indicators values, reference values and errors. You can also chose to export the raw (un-normalised or unscaled variable) as a separate product. You should not save large sptaial output data on GitHub. You can use eval=FALSE to avoid code from being executed (example below - delete if not relevant) 
 
 -->
+
+
 
 ```{r export}
 #| eval: false
